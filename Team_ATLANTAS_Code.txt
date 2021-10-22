@@ -1,0 +1,303 @@
+#include <LiquidCrystal.h>
+
+#define Push_Button 2
+#define PIN_READWRITE 10
+#define PIN_CONTRAST 12
+
+#define Player_Run1 1
+#define Player_Run2 2
+#define Player_Jump 3
+#define Player_Jump_Upper '.'         
+#define Player_Jump_Lower 4
+#define Arena_EMPTY ' '      
+#define Arena_Solid 5
+#define Arena_Solid_Right 6
+#define Arena_Solid_Left 7
+
+#define Player_Horizontal_Position 1    
+
+#define TERRAIN_WIDTH 16
+#define TERRAIN_EMPTY 0
+#define TERRAIN_Lower_BLOCK 1
+#define TERRAIN_Upper_BLOCK 2
+
+#define Player_Position_OFF 0        
+#define Player_Position_RUN_Lower_1 1  
+#define Player_Position_RUN_Lower_2 2 
+
+#define Player_Position_Jump_1 3      
+#define Player_Position_Jump_2 4       
+#define Player_Position_Jump_3 5       
+#define Player_Position_Jump_4 6       
+#define Player_Position_Jump_5 7      
+#define Player_Position_Jump_6 8     
+#define Player_Position_Jump_7 9       
+#define Player_Position_Jump_8 10      
+
+#define Player_Position_RUN_Upper_1 11 
+#define Player_Position_RUN_Upper_2 12 
+
+LiquidCrystal lcd(11, 9, 6, 5, 4, 3);
+static char terrainUpper[TERRAIN_WIDTH + 1];
+static char terrainLower[TERRAIN_WIDTH + 1];
+static bool buttonPushed = false;
+
+void initializeGraphics(){
+  static byte graphics[] = {
+    // Run Position 1
+    B10001,
+	B10001,
+	B10001,
+	B01010,
+	B01110,
+	B01010,
+	B01010,
+	B10110,
+    // Run Position 2
+    B01010,
+	B01010,
+	B10001,
+	B01010,
+	B01110,
+	B01010,
+	B01010,
+	B01101,
+    // Jump
+    B10001,
+	B11011,
+	B10001,
+	B01010,
+	B01110,
+	B01010,
+	B00000,
+	B00000,
+    // Jump Lower
+    B01010,
+	B01010,
+	B01010,
+	B01110,
+	B01110,
+	B10001,
+	B00000,
+	B00000,
+    // Ground
+    B00110,
+	B01010,
+	B11111,
+	B11111,
+	B00111,
+	B00111,
+	B00111,
+	B00111,
+    // Ground Right
+    B00000,
+	B00000,
+	B00101,
+	B00010,
+	B00101,
+	B00001,
+	B00001,
+	B00001,
+    // Ground Left
+    B10000,
+	B10000,
+	B11000,
+	B11000,
+	B11000,
+	B11000,
+	B11000,
+	B11000,
+  };
+  int i;
+  for (i = 0; i < 7; ++i) {
+	  lcd.createChar(i + 1, &graphics[i * 8]);
+  }
+  for (i = 0; i < TERRAIN_WIDTH; ++i) {
+    terrainUpper[i] = Arena_EMPTY;
+    terrainLower[i] = Arena_EMPTY;
+  }
+}
+
+void advanceTerrain(char* terrain, byte newTerrain){
+  for (int i = 0; i < TERRAIN_WIDTH; ++i) {
+    char current = terrain[i];
+    char next = (i == TERRAIN_WIDTH-1) ? newTerrain : terrain[i+1];
+    switch (current){
+      case Arena_EMPTY:
+        terrain[i] = (next == Arena_Solid) ? Arena_Solid_Right : Arena_EMPTY;
+        break;
+      case Arena_Solid:
+        terrain[i] = (next == Arena_EMPTY) ? Arena_Solid_Left : Arena_Solid;
+        break;
+      case Arena_Solid_Right:
+        terrain[i] = Arena_Solid;
+        break;
+      case Arena_Solid_Left:
+        terrain[i] = Arena_EMPTY;
+        break;
+    }
+  }
+}
+
+bool drawPlayer(byte Position, char* terrainUpper, char* terrainLower, unsigned int score) {
+  bool collide = false;
+  char UpperSave = terrainUpper[Player_Horizontal_Position];
+  char LowerSave = terrainLower[Player_Horizontal_Position];
+  byte Upper, Lower;
+  switch (Position) {
+    case Player_Position_OFF:
+      Upper = Lower = Arena_EMPTY;
+      break;
+    case Player_Position_RUN_Lower_1:
+      Upper = Arena_EMPTY;
+      Lower = Player_Run1;
+      break;
+    case Player_Position_RUN_Lower_2:
+      Upper = Arena_EMPTY;
+      Lower = Player_Run2;
+      break;
+    case Player_Position_Jump_1:
+    case Player_Position_Jump_8:
+      Upper = Arena_EMPTY;
+      Lower = Player_Jump;
+      break;
+    case Player_Position_Jump_2:
+    case Player_Position_Jump_7:
+      Upper = Player_Jump_Upper;
+      Lower = Player_Jump_Lower;
+      break;
+    case Player_Position_Jump_3:
+    case Player_Position_Jump_4:
+    case Player_Position_Jump_5:
+    case Player_Position_Jump_6:
+      Upper = Player_Jump;
+      Lower = Arena_EMPTY;
+      break;
+    case Player_Position_RUN_Upper_1:
+      Upper = Player_Run1;
+      Lower = Arena_EMPTY;
+      break;
+    case Player_Position_RUN_Upper_2:
+      Upper = Player_Run2;
+      Lower = Arena_EMPTY;
+      break;
+  }
+  if (Upper != ' ') {
+    terrainUpper[Player_Horizontal_Position] = Upper;
+    collide = (UpperSave == Arena_EMPTY) ? false : true;
+  }
+  if (Lower != ' ') {
+    terrainLower[Player_Horizontal_Position] = Lower;
+    collide |= (LowerSave == Arena_EMPTY) ? false : true;
+  }
+  
+  byte digits = (score > 9999) ? 5 : (score > 999) ? 4 : (score > 99) ? 3 : (score > 9) ? 2 : 1;
+  
+  // Draw the scene
+  terrainUpper[TERRAIN_WIDTH] = '\0';
+  terrainLower[TERRAIN_WIDTH] = '\0';
+  char temp = terrainUpper[16-digits];
+  terrainUpper[16-digits] = '\0';
+  lcd.setCursor(0,0);
+  lcd.print(terrainUpper);
+  terrainUpper[16-digits] = temp;  
+  lcd.setCursor(0,1);
+  lcd.print(terrainLower);
+  
+  lcd.setCursor(16 - digits,0);
+  lcd.print(score);
+
+  terrainUpper[Player_Horizontal_Position] = UpperSave;
+  terrainLower[Player_Horizontal_Position] = LowerSave;
+  return collide;
+}
+
+
+void buttonPush() {
+  buttonPushed = true;
+}
+
+void setup(){
+  pinMode(PIN_READWRITE, OUTPUT);
+  digitalWrite(PIN_READWRITE, LOW);
+  pinMode(PIN_CONTRAST, OUTPUT);
+  digitalWrite(PIN_CONTRAST, LOW);
+  pinMode(Push_Button, INPUT);
+  digitalWrite(Push_Button, HIGH);
+
+  
+  attachInterrupt(0, buttonPush, FALLING);
+  
+  initializeGraphics();
+  
+  lcd.begin(16, 2);
+  lcd.print("Team Atlantas");
+  delay(1000);
+}
+
+void loop(){
+  static byte PlayerPos = Player_Position_RUN_Lower_1;
+  static byte newTerrainType = TERRAIN_EMPTY;
+  static byte newTerrainDuration = 1;
+  static bool playing = false;
+  static bool blink = false;
+  static unsigned int distance = 0;
+  
+  if (!playing) {
+    drawPlayer((blink) ? Player_Position_OFF : PlayerPos, terrainUpper, terrainLower, distance >> 3);
+    if (blink) {
+      lcd.setCursor(0,0);
+      lcd.print("Press Start");
+    }
+    delay(250);
+    blink = !blink;
+    if (buttonPushed) {
+      initializeGraphics();
+      PlayerPos = Player_Position_RUN_Lower_1;
+      playing = true;
+      buttonPushed = false;
+      distance = 0;
+    }
+    return;
+  }
+
+  
+  advanceTerrain(terrainLower, newTerrainType == TERRAIN_Lower_BLOCK ? Arena_Solid : Arena_EMPTY);
+  advanceTerrain(terrainUpper, newTerrainType == TERRAIN_Upper_BLOCK ? Arena_Solid : Arena_EMPTY);
+  
+ 
+  if (--newTerrainDuration == 0) {
+    if (newTerrainType == TERRAIN_EMPTY) {
+      newTerrainType = (random(3) == 0) ? TERRAIN_Upper_BLOCK : TERRAIN_Lower_BLOCK;
+      newTerrainDuration = 2 + random(10);
+    } else {
+      newTerrainType = TERRAIN_EMPTY;
+      newTerrainDuration = 10 + random(10);
+    }
+  }
+    
+  if (buttonPushed) {
+    if (PlayerPos <= Player_Position_RUN_Lower_2) PlayerPos = Player_Position_Jump_1;
+    buttonPushed = false;
+  }  
+
+  if (drawPlayer(PlayerPos, terrainUpper, terrainLower, distance >> 3)) {
+    playing = false; 
+  } else {
+    if (PlayerPos == Player_Position_RUN_Lower_2 || PlayerPos == Player_Position_Jump_8) {
+      PlayerPos = Player_Position_RUN_Lower_1;
+    } else if ((PlayerPos >= Player_Position_Jump_3 && PlayerPos <= Player_Position_Jump_5) && terrainLower[Player_Horizontal_Position] != Arena_EMPTY) {
+      PlayerPos = Player_Position_RUN_Upper_1;
+    } else if (PlayerPos >= Player_Position_RUN_Upper_1 && terrainLower[Player_Horizontal_Position] == Arena_EMPTY) {
+      PlayerPos = Player_Position_Jump_5;
+    } else if (PlayerPos == Player_Position_RUN_Upper_2) {
+      PlayerPos = Player_Position_RUN_Upper_1;
+    } else {
+      ++PlayerPos;
+    }
+    ++distance;
+    
+
+  }
+  delay(100);
+}
